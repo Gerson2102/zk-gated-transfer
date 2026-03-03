@@ -6,15 +6,18 @@ pub contract Transfer {
     use aztec::{
         macros::{functions::{external, initializer, only_self, view}, storage::storage},
         protocol::address::AztecAddress,
-        state_vars::{PublicImmutable, PublicMutable, Map},
+        messages::message_delivery::MessageDelivery,
+        state_vars::{PublicImmutable, PublicMutable, Map, Owned},
     };
 
+    use balance_set::BalanceSet;
+
     // @param owner The address of the owner
-    // @param counter A numerical value
     #[storage]
     struct Storage<Context> {
         owner: PublicImmutable<AztecAddress, Context>,
         whitelist: Map<AztecAddress, PublicMutable<bool, Context>, Context>,
+        balances: Owned<BalanceSet<Context>, Context>,
     }
 
     /// @dev Initialize the contract
@@ -50,9 +53,20 @@ pub contract Transfer {
     }
 
     #[external("private")]
-    fn transfer(to: AztecAddress, amount: u128, token: AztecAddress) {
+    fn transfer(to: AztecAddress, amount: u128) {
         self.enqueue_self._only_whitelisted(self.msg_sender());
+        self.enqueue_self._only_whitelisted(to);
         
+        let sender = self.msg_sender();
+        
+        self.storage.balances.at(sender).sub(amount).deliver(MessageDelivery.ONCHAIN_CONSTRAINED);
+        self.storage.balances.at(to).add(amount).deliver(MessageDelivery.ONCHAIN_CONSTRAINED);
+    }
+
+    #[external("private")]
+    fn mint(recipient: AztecAddress, amount: u128) {
+        self.enqueue_self._only_owner();
+        self.storage.balances.at(recipient).add(amount).deliver(MessageDelivery.ONCHAIN_CONSTRAINED);
     }
 
     #[external("public")]
@@ -65,5 +79,10 @@ pub contract Transfer {
     #[only_self]
     fn _only_owner() {
         assert(self.msg_sender() == self.storage.owner.read(), "Not owner");
+    }
+
+    #[external("utility")]
+    unconstrained fn get_balance(address: AztecAddress) -> u128 {
+        self.storage.balances.at(address).balance_of()
     }
 }
