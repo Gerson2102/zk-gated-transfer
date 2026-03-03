@@ -1,0 +1,69 @@
+use aztec::macros::aztec;
+
+#[aztec]
+pub contract Transfer {
+    // aztec library imports
+    use aztec::{
+        macros::{functions::{external, initializer, only_self, view}, storage::storage},
+        protocol::address::AztecAddress,
+        state_vars::{PublicImmutable, PublicMutable, Map},
+    };
+
+    // @param owner The address of the owner
+    // @param counter A numerical value
+    #[storage]
+    struct Storage<Context> {
+        owner: PublicImmutable<AztecAddress, Context>,
+        whitelist: Map<AztecAddress, PublicMutable<bool, Context>, Context>,
+    }
+
+    /// @dev Initialize the contract
+    /// @param owner The address of the owner
+    #[external("public")]
+    #[initializer]
+    fn constructor(owner: AztecAddress) {
+        self.storage.owner.initialize(owner);
+    }
+
+    /// @dev Adds a user to the whitelist
+    /// @param user The address of the user to add to the whitelist
+    #[external("public")]
+    fn add_to_whitelist(user: AztecAddress) {
+        self.call_self._only_owner();
+        self.storage.whitelist.at(user).write(true);
+    }
+
+    /// @dev Removes a user from the whitelist
+    /// @param user The address of the user to remove from the whitelist
+    #[external("public")]
+    fn remove_from_whitelist(user: AztecAddress) {
+        self.call_self._only_owner();
+        self.storage.whitelist.at(user).write(false);
+    }
+
+    /// @dev Retrieves the address of the user
+    /// @return The address of the user
+    #[external("public")]
+    #[view]
+    fn get_owner() -> AztecAddress {
+        self.storage.owner.read()
+    }
+
+    #[external("private")]
+    fn transfer(to: AztecAddress, amount: u128, token: AztecAddress) {
+        self.enqueue_self._only_whitelisted(self.msg_sender());
+        
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn _only_whitelisted(address: AztecAddress) {
+        assert(self.storage.whitelist.at(address).read(), "User not in whitelist");
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn _only_owner() {
+        assert(self.msg_sender() == self.storage.owner.read(), "Not owner");
+    }
+}
